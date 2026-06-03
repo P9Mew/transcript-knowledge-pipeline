@@ -1,0 +1,18 @@
+{
+  "name": "transcript-knowledge-pipeline",
+  "version": "1.0.0",
+  "description": "Convert transcripts into structured learning notes, Gamma presentation PDFs, and local A4 workbook PDFs.",
+  "author": {
+    "name": "P9Mew"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Transcript Knowledge Pipeline",
+    "shortDescription": "Turn transcripts into notes and two PDF formats.",
+    "longDescription": "Create structured anti-hype learning notes, Gamma presentation PDFs, and complete local A4 workbook PDFs.",
+    "developerName": "P9Mew",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Process transcripts into structured notes, Gamma presentation PDFs, and local workbook PDFs."
+  }
+}
