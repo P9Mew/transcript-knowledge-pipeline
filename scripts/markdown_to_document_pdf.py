@@ -33,6 +33,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 def register_fonts() -> tuple[str, str]:
     candidates = [
+        (Path(r"C:\Windows\Fonts\Deng.ttf"), Path(r"C:\Windows\Fonts\Dengb.ttf")),
+        (Path(r"C:\Windows\Fonts\simhei.ttf"), Path(r"C:\Windows\Fonts\simhei.ttf")),
         (Path(r"C:\Windows\Fonts\arial.ttf"), Path(r"C:\Windows\Fonts\arialbd.ttf")),
         (Path(r"C:\Windows\Fonts\calibri.ttf"), Path(r"C:\Windows\Fonts\calibrib.ttf")),
     ]
@@ -52,6 +54,45 @@ MUTED = colors.HexColor("#667085")
 SOFT = colors.HexColor("#eef7f5")
 LINE = colors.HexColor("#d0d5dd")
 CONTENT_WIDTH = 6.7 * inch
+OUTPUT_LANGUAGE = "zh-cn"
+
+DISPLAY_TRANSLATIONS = {
+    "Executive Summary": "执行摘要",
+    "Learning Objectives": "学习目标",
+    "Audience Level": "适用对象与程度",
+    "Key Takeaways": "关键要点",
+    "Concept Breakdown": "概念解析",
+    "Mental Models and Frameworks": "心智模型与框架",
+    "Process Documentation": "流程说明",
+    "Terminology & Definitions": "术语与定义",
+    "Reality Check (consolidated cross-cut)": "现实检验",
+    "Implementation Checklist": "实施清单",
+    "Journaling Prompts": "反思问题",
+    "Connection to Future Modules": "与后续单元的连接",
+    "Anti-Hype Filter — what was stripped": "反炒作过滤：删减与降级内容",
+    "Anti-Hype Filter - what was stripped": "反炒作过滤：删减与降级内容",
+    "Success Standard": "成功标准",
+    "Plain English.": "简明解释。",
+    "Detailed.": "详细说明。",
+    "Why it matters.": "重要性。",
+    "Daily-life application.": "日常应用。",
+    "Scientific classification.": "科学分类。",
+    "Claim": "主张",
+    "Classification": "分类",
+    "Scientific Consensus": "科学共识",
+    "Strong Evidence": "强证据支持",
+    "Emerging Research": "新兴研究",
+    "Useful Heuristic": "实用启发",
+    "Personal Interpretation": "个人诠释",
+    "Anecdotal": "轶事性证据",
+    "Oversimplification": "过度简化",
+    "Speculative": "推测性",
+    "Proven Knowledge": "已验证知识",
+    "Practical Heuristics": "实用启发",
+    "Instructor Opinions or Anecdotes": "讲师观点或轶事",
+    "Speculative or Hype-Based Claims": "推测性或炒作性主张",
+    "Open Questions or Areas Requiring Verification": "开放问题或待验证事项",
+}
 
 
 def strip_frontmatter(markdown: str) -> str:
@@ -87,8 +128,18 @@ def inline_md(text: str) -> str:
     return text
 
 
+def localize_display_text(text: str) -> str:
+    if OUTPUT_LANGUAGE == "en":
+        return text.strip()
+    text = text.replace("\u2014", "-").replace("\u2013", "-")
+    text = re.sub(r"^### Concept (\d+) - ", r"### 概念 \1 - ", text)
+    for english, chinese in DISPLAY_TRANSLATIONS.items():
+        text = text.replace(english, chinese)
+    return text
+
+
 def clean_line(line: str) -> str:
-    return line.strip().replace("\u2014", "-").replace("\u2013", "-")
+    return localize_display_text(line.strip())
 
 
 def styles():
@@ -209,7 +260,10 @@ def parse_table(lines: list[str], start: int) -> tuple[list[list[str]], int]:
     rows = []
     i = start
     while i < len(lines) and is_table_row(lines[i]):
-        cells = [cell.strip() for cell in lines[i].strip().strip("|").split("|")]
+        cells = [
+            localize_display_text(cell.strip())
+            for cell in lines[i].strip().strip("|").split("|")
+        ]
         if not all(re.fullmatch(r":?-{3,}:?", cell or "") for cell in cells):
             rows.append(cells)
         i += 1
@@ -287,14 +341,33 @@ def cover_story(metadata: dict[str, str], title: str, style_map: dict):
     lesson = metadata.get("lesson_number", "")
     instructor = metadata.get("instructor", "")
     date = metadata.get("date", "")
-    lesson_label = f"Lesson {lesson}" if lesson and lesson != "null" else "Course Note"
-    meta_rows = [
-        ["Course", course],
-        ["Session", lesson_label],
-        ["Instructor", instructor],
-        ["Date", date],
-        ["Format", "Learning Workbook"],
-    ]
+    if OUTPUT_LANGUAGE == "en":
+        lesson_label = f"Lesson {lesson}" if lesson and lesson != "null" else "Course note"
+        meta_rows = [
+            ["Course", course],
+            ["Lesson", lesson_label],
+            ["Instructor", instructor],
+            ["Date", date],
+            ["Format", "Learning workbook"],
+        ]
+        eyebrow = "Learning Workbook"
+        subtitle = "Structured notes, reality checks, implementation prompts, and reflection space."
+        usage = (
+            "Use this workbook to review the course, mark practices to test, and separate "
+            "useful exercises from claims that require independent verification."
+        )
+    else:
+        lesson_label = f"第 {lesson} 课" if lesson and lesson != "null" else "课程笔记"
+        meta_rows = [
+            ["课程", course],
+            ["课次", lesson_label],
+            ["讲师", instructor],
+            ["日期", date],
+            ["格式", "学习工作簿"],
+        ]
+        eyebrow = "学习工作簿"
+        subtitle = "结构化笔记、现实检验、实施提示与反思空间。"
+        usage = "使用本工作簿复习课程、标记想要测试的实践，并区分实用练习与需要独立验证的主张。"
     meta_table = Table(
         [
             [
@@ -323,19 +396,15 @@ def cover_story(metadata: dict[str, str], title: str, style_map: dict):
     )
     return [
         Spacer(1, 0.55 * inch),
-        Paragraph("Learning Workbook", style_map["eyebrow"]),
+        Paragraph(eyebrow, style_map["eyebrow"]),
         Paragraph(inline_md(title), style_map["title"]),
-        Paragraph(
-            "Structured notes, reality checks, implementation prompts, and reflection space.",
-            style_map["subtitle"],
-        ),
+        Paragraph(subtitle, style_map["subtitle"]),
         Spacer(1, 0.25 * inch),
         meta_table,
         Spacer(1, 0.35 * inch),
         Table(
             [[Paragraph(
-                "Use this workbook to review the lesson, mark the practices you want to test, "
-                "and separate useful exercises from claims that need independent verification.",
+                usage,
                 style_map["body"],
             )]],
             colWidths=[5.9 * inch],
@@ -398,16 +467,21 @@ def build_story(markdown: str, title: str):
             story.append(table_flowable(rows, style_map))
             story.append(Spacer(1, 8))
             continue
-        if line.startswith("## "):
+        heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if heading_match:
             flush_paragraph()
             flush_lists()
-            if story:
+            level = len(heading_match.group(1))
+            heading_text = heading_match.group(2)
+            if level == 1:
+                story.append(Paragraph(inline_md(heading_text), style_map["title"]))
+            elif level == 2:
+                if story:
+                    story.append(Spacer(1, 4))
+                story.append(Paragraph(inline_md(heading_text), style_map["h2"]))
+            else:
                 story.append(Spacer(1, 4))
-            story.append(Paragraph(inline_md(line[3:]), style_map["h2"]))
-        elif line.startswith("### "):
-            flush_paragraph()
-            flush_lists()
-            story.append(Paragraph(inline_md(line[4:]), style_map["h3"]))
+                story.append(Paragraph(inline_md(heading_text), style_map["h3"]))
         elif line.startswith(">"):
             flush_paragraph()
             flush_lists()
@@ -439,7 +513,8 @@ def draw_footer(canvas, doc):
     canvas.line(0.65 * inch, 0.62 * inch, A4[0] - 0.65 * inch, 0.62 * inch)
     canvas.setFont(REGULAR_FONT, 8)
     canvas.setFillColor(MUTED)
-    canvas.drawRightString(A4[0] - 0.65 * inch, 0.45 * inch, f"Page {doc.page}")
+    page_label = f"Page {doc.page}" if OUTPUT_LANGUAGE == "en" else f"第 {doc.page} 页"
+    canvas.drawRightString(A4[0] - 0.65 * inch, 0.45 * inch, page_label)
     canvas.restoreState()
 
 
@@ -460,11 +535,19 @@ def render(note_path: Path, output_path: Path) -> None:
 
 
 def main() -> int:
+    global OUTPUT_LANGUAGE
     parser = argparse.ArgumentParser()
     parser.add_argument("note", type=Path)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--suffix", default=".document.pdf")
+    parser.add_argument(
+        "--language-profile",
+        choices=["zh-cn", "en", "mixed"],
+        default="zh-cn",
+        help="Workbook labels: zh-cn/mixed use Chinese labels; en keeps English labels.",
+    )
     args = parser.parse_args()
+    OUTPUT_LANGUAGE = "en" if args.language_profile == "en" else "zh-cn"
 
     output_path = args.out_dir / f"{args.note.stem}{args.suffix}"
     render(args.note, output_path)

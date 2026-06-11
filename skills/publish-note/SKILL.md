@@ -1,6 +1,6 @@
 ---
 name: publish-note
-description: Use when a finished transcript learning note needs a Gamma presentation PDF, a local A4 workbook PDF, or both.
+description: Use when a finished transcript learning note needs a Gamma presentation PDF, a local A4 workbook PDF, or both. Ask for output language if it is not specified: Chinese, English, or mixed Chinese with key English terms preserved. If the user asks for a guided menu, slash command, whole pipeline, or QC before publishing, use transcript-knowledge-pipeline first.
 ---
 
 # Publish Note
@@ -11,6 +11,28 @@ Publish a finished Markdown learning note into two complementary PDF outputs:
 - Local A4 workbook PDF: `Knowledge/04_Docs/<note>.document.pdf`
 
 The Gamma output is for presenting. The local ReportLab output is for reading, studying, printing, and preserving the complete note content.
+
+## Language policy
+
+Ask if the user has not already chosen:
+
+```text
+Choose PDF output language:
+
+1. Chinese PDFs, with key English terms preserved
+2. English PDFs
+3. Mixed: Chinese explanation, keep important English frameworks and terms
+
+Reply with 1, 2, or 3.
+```
+
+Apply the selected language consistently:
+
+- **Chinese:** generate both Gamma presentation PDF and local workbook PDF in Simplified Chinese. Preserve useful English key terms, acronyms, framework names, and technical labels when they improve accuracy.
+- **English:** generate both PDFs in English. Do not force Chinese cover labels, section labels, or Gamma instructions.
+- **Mixed:** use Chinese explanatory text and labels while preserving important English terms, acronyms, model names, and framework labels.
+
+Do not translate an established English term into an inaccurate Chinese equivalent merely to remove English text.
 
 ## Prerequisites
 
@@ -35,10 +57,12 @@ Resolve scripts relative to the plugin root:
 ### 1. Generate the local workbook PDF
 
 ```powershell
-python scripts/markdown_to_document_pdf.py <note.md> --out-dir Knowledge/04_Docs
+python scripts/markdown_to_document_pdf.py <note.md> --out-dir Knowledge/04_Docs --language-profile zh-cn
 ```
 
 This creates `Knowledge/04_Docs/<note>.document.pdf`.
+
+Use `--language-profile en` for English workbook labels, or `--language-profile mixed` for Chinese labels with key English terms preserved in the note content.
 
 The renderer uses ReportLab and produces a Clean Course Workbook:
 
@@ -50,24 +74,42 @@ The renderer uses ReportLab and produces a Clean Course Workbook:
 
 ### 2. Generate the Gamma presentation PDF
 
+For normal-length notes, use about 14 Gamma cards/pages. For long or dense notes, use about 28 cards/pages so the PDF can breathe instead of compressing too much content onto each slide.
+
 ```powershell
 python scripts/gamma_presentation_generate.py <note.md> `
   --out-dir Knowledge/03_Decks `
   --export-as pdf `
   --card-split auto `
   --num-cards 14 `
+  --language-profile zh-cn `
   --timeout 300
 ```
 
 This creates `Knowledge/03_Decks/<note>.pdf`.
+
+For long content, use either:
+
+```powershell
+python scripts/gamma_presentation_generate.py <note.md> `
+  --out-dir Knowledge/03_Decks `
+  --export-as pdf `
+  --card-split auto `
+  --page-profile long `
+  --language-profile zh-cn `
+  --timeout 300
+```
+
+or pass an exact custom count with `--num-cards <number>`.
 
 The Gamma settings are deliberate:
 
 - `format=presentation`
 - `exportAs=pdf`
 - `cardSplit=auto`
-- `numCards=14`
+- `numCards=14` for normal notes, or about `28` for long notes
 - `cardOptions.dimensions=16x9`
+- `--language-profile zh-cn | en | mixed` follows the user's language selection
 
 Do not default to PPTX. Do not use `inputTextBreaks` for these notes because it can create only a few overloaded slides.
 
@@ -109,9 +151,8 @@ Use the official Gamma docs as the source of truth: https://developers.gamma.app
 
 Before reporting completion:
 
-1. Confirm the Gamma PDF exists and has 14 pages.
+1. Confirm the Gamma PDF exists and has the expected page count: normally about 14 pages, or about 28 pages for long-content output.
 2. Confirm the local workbook PDF exists and is A4.
 3. Confirm the workbook PDF does not contain leaked YAML frontmatter.
 4. Confirm the note frontmatter links to both outputs.
 5. Run the ReportLab renderer test when the renderer changes.
-

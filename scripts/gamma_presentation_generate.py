@@ -33,6 +33,80 @@ POLL_INTERVAL_S = 5
 MAX_INPUT_CHARS = 400_000
 USER_AGENT = "gamma-presentation-publisher/1.0 (+https://developers.gamma.app)"
 
+CHINESE_PRESENTATION_INSTRUCTIONS = (
+    "This is a structured learning note. Create the presentation in 简体中文 (Simplified Chinese). "
+    "Translate section headings, explanatory prose, labels, and slide titles into Chinese. "
+    "Preserve useful English key terms, acronyms, framework names, and technical labels "
+    "when they improve accuracy, for example Learning Cycle, ABC, UVP, Bloom's Taxonomy, "
+    "and Philips Model. Preserve the H2 section headings as card titles when possible. "
+    "Do not add marketing language or hype. Keep the Reality Check section's category "
+    "distinctions visible. Avoid packed slides: split dense sections into multiple slides "
+    "with generous spacing, large readable type, and no more than 4 concise bullets per slide."
+)
+
+ENGLISH_PRESENTATION_INSTRUCTIONS = (
+    "This is a structured learning note. Create the presentation in clear professional English. "
+    "Keep section headings, explanatory prose, labels, and slide titles in English. Preserve useful "
+    "technical terms, acronyms, framework names, and model labels exactly when they improve accuracy. "
+    "Do not add marketing language or hype. Keep the Reality Check section's category distinctions "
+    "visible. Avoid packed slides: split dense sections into multiple slides with generous spacing, "
+    "large readable type, and no more than 4 concise bullets per slide."
+)
+
+MIXED_PRESENTATION_INSTRUCTIONS = (
+    "This is a structured learning note. Create the presentation mainly in 简体中文 (Simplified Chinese), "
+    "but preserve important English key terms, acronyms, framework names, model names, and technical "
+    "labels when they improve accuracy. Use English terms in parentheses or as labels where helpful. "
+    "Do not add frameworks, concepts, marketing language, or hype that are absent from the input note. "
+    "Keep the Reality Check section's category distinctions visible. Avoid packed slides: split dense "
+    "sections into multiple slides with generous spacing, large readable type, and no more than 4 "
+    "concise bullets per slide."
+)
+
+
+def language_settings(language_profile: str) -> tuple[str, dict]:
+    if language_profile == "en":
+        return ENGLISH_PRESENTATION_INSTRUCTIONS, {
+            "amount": "medium",
+            "tone": "clear, professional, anti-hype",
+            "audience": "learners and practitioners",
+            "language": "en",
+        }
+    if language_profile == "mixed":
+        return MIXED_PRESENTATION_INSTRUCTIONS, {
+            "amount": "medium",
+            "tone": "清晰、专业、不过度宣传",
+            "audience": "学员与实践者",
+            "language": "zh-cn",
+        }
+    return CHINESE_PRESENTATION_INSTRUCTIONS, {
+        "amount": "medium",
+        "tone": "清晰、专业、不过度宣传",
+        "audience": "学员与实践者",
+        "language": "zh-cn",
+    }
+
+
+def build_request_body(body_text: str, card_split: str, language_profile: str = "zh-cn") -> dict:
+    instructions, text_options = language_settings(language_profile)
+    return {
+        "inputText": body_text,
+        "textMode": "preserve",
+        "format": "presentation",
+        "cardSplit": card_split,
+        "additionalInstructions": instructions,
+        "textOptions": text_options,
+        "cardOptions": {"dimensions": "16x9"},
+    }
+
+
+def resolve_num_cards(num_cards: int | None, page_profile: str) -> int | None:
+    if num_cards:
+        return num_cards
+    if page_profile == "long":
+        return 28
+    return None
+
 
 def load_env_file(start: Path) -> None:
     """Walk up from start looking for .env; load KEY=VAL lines into os.environ."""
@@ -113,6 +187,18 @@ def main() -> int:
     p.add_argument("--export-as", choices=["pptx", "pdf"], default="pptx")
     p.add_argument("--card-split", choices=["auto", "inputTextBreaks"], default="inputTextBreaks")
     p.add_argument("--num-cards", type=int, default=None)
+    p.add_argument(
+        "--page-profile",
+        choices=["normal", "long"],
+        default="normal",
+        help="Use long for dense notes; it requests about double the normal Gamma pages/cards.",
+    )
+    p.add_argument(
+        "--language-profile",
+        choices=["zh-cn", "en", "mixed"],
+        default="zh-cn",
+        help="Presentation language: zh-cn, en, or mixed Chinese with key English terms.",
+    )
     args = p.parse_args()
 
     note_path: Path = args.note.resolve()
@@ -135,28 +221,10 @@ def main() -> int:
         )
         body_text = body_text[:MAX_INPUT_CHARS]
 
-    request_body = {
-        "inputText": body_text,
-        "textMode": "preserve",
-        "format": "presentation",
-        "cardSplit": args.card_split,
-        "additionalInstructions": (
-            "This is a structured learning note. Preserve the H2 section headings as "
-            "card titles when possible. Do not add marketing language or hype. Keep "
-            "the Reality Check section's category distinctions visible. Avoid packed "
-            "slides: split dense sections into multiple slides with generous spacing, "
-            "large readable type, and no more than 4 concise bullets per slide."
-        ),
-        "textOptions": {
-            "amount": "medium",
-            "tone": "clear, professional, no hype",
-            "audience": "students and practitioners",
-            "language": "en",
-        },
-        "cardOptions": {"dimensions": "16x9"},
-    }
-    if args.num_cards:
-        request_body["numCards"] = args.num_cards
+    request_body = build_request_body(body_text, args.card_split, args.language_profile)
+    resolved_num_cards = resolve_num_cards(args.num_cards, args.page_profile)
+    if resolved_num_cards:
+        request_body["numCards"] = resolved_num_cards
     if not args.no_pptx:
         request_body["exportAs"] = args.export_as
     if args.theme:
@@ -187,6 +255,13 @@ def main() -> int:
             status_payload = get_json(f"{API_BASE}/generations/{generation_id}", api_key)
         except HTTPError as e:
             fail(f"HTTP {e.code} polling generation: {e.read().decode('utf-8', errors='replace')}")
+        except (URLError, TimeoutError) as e:
+            print(
+                f"WARN: polling generationId={generation_id} failed transiently: {e}",
+                file=sys.stderr,
+            )
+            time.sleep(POLL_INTERVAL_S)
+            continue
         status = status_payload.get("status")
         if status == "completed":
             break
